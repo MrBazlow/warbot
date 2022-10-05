@@ -1,0 +1,21 @@
+{
+  "name": "war_state_bot",
+  "version": "1.0.0",
+  "description": "A discord bot to post updates about the state of war in Foxhole",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ascii-table": "^0.0.9",
+    "axios": "^0.27.2",
+    "axios-etag-cache": "^1.2.2",
+    "discord.js": "^14.5.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.0.3",
+    "eslint": "^8.24.0"
+  }
+}
