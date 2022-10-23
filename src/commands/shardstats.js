@@ -78,6 +78,12 @@ module.exports = {
 				tableObject[shardData[shardName].name] = shardWarReport;
 			}
 			catch (error) {
+				tableObject[shardData[shardName].name] = {
+					'Colonials': '0',
+					'Wardens': '0',
+					'Total': '0',
+					'Day': '0',
+				};
 				console.log(error);
 			}
 		}
