@@ -22,7 +22,10 @@ module.exports = {
 		const tableObject = {};
 
 		async function fetchJSON(url) {
-			const res = await axiosWithETAGCache(url);
+			const res = await axiosWithETAGCache({
+				url: url,
+				timeout: 2000,
+			});
 			return res.data;
 		}
 
