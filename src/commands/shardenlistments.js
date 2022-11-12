@@ -7,11 +7,11 @@ const axiosWithETAGCache = axiosETAGCache(axios);
 
 module.exports = {
 	data: new SlashCommandBuilder()
-		.setName('shardstats')
-		.setDescription('Returns stats')
+		.setName('shardenlistments')
+		.setDescription('Returns current Enlistments')
 		.addStringOption(option =>
 			option.setName('shard')
-				.setDescription('Get a specific shard stats')
+				.setDescription('Get a specific shards Enlistments')
 				.addChoices(
 					...Object.keys(shardData).map((shard) => ({ name: shardData[shard].name, value: shard })),
 				)),
@@ -21,66 +21,45 @@ module.exports = {
 		const shardName = interaction.options.getString('shard');
 		const tableObject = {};
 
-		async function fetchJSON(url) {
-			const res = await axiosWithETAGCache({
-				url: url,
-				timeout: 2000,
-			});
-			return res.data;
-		}
+		async function getWarReport(shardAPI) {
 
-		async function getMaps(api) {
-			try {
-				const shardMaps = JSON.parse(JSON.stringify(await fetchJSON(api + 'worldconquest/maps')));
-				return shardMaps;
-			}
-			catch (error) {
-				console.log(error);
-			}
-		}
+			let colonialEnlistments = 0;
+			let wardenEnlistments = 0;
+			let totalEnlistments = 0;
 
-		async function getWarReport(shardAPI, serverMaps) {
+			const homeRegions = [
+				'HomeRegionC',
+				'HomeRegionW',
+			];
 
-			let totalColonialCasualties = 0;
-			let totalWardenCasualties = 0;
-			let totalCasualties = 0;
-			let dayOfWar = 0;
-
-			const mapReports = serverMaps.map((sMap) =>
+			const mapReports = homeRegions.map((sMap) =>
 				axiosWithETAGCache({
 					url: shardAPI + 'worldconquest/warReport/' + sMap,
 					timeout: 5000,
 				}),
 			);
+
 			try {
 				const result = await Promise.all(mapReports);
-				result.map((returnedResult) => {
-					const report = JSON.parse(JSON.stringify(returnedResult.data));
-					totalColonialCasualties = totalColonialCasualties + report.colonialCasualties;
-					totalWardenCasualties = totalWardenCasualties + report.wardenCasualties;
-					dayOfWar = report.dayOfWar;
-				});
+				colonialEnlistments = result[0].data.totalEnlistments;
+				wardenEnlistments = result[1].data.totalEnlistments;
+				totalEnlistments = colonialEnlistments + wardenEnlistments;
 			}
 			catch (err) {
 				console.log(err);
 			}
 
-
-			totalCasualties = totalColonialCasualties + totalWardenCasualties;
-
 			return {
-				'Colonials': totalColonialCasualties.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','),
-				'Wardens': totalWardenCasualties.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','),
-				'Total': totalCasualties.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','),
-				'Day': dayOfWar.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','),
+				'Colonials': colonialEnlistments.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','),
+				'Wardens': wardenEnlistments.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','),
+				'Total': totalEnlistments.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','),
 			};
 		}
 
 		if (shardName !== null) {
 			const shardAPI = shardData[shardName].api;
 			try {
-				const mapList = await getMaps(shardAPI);
-				const shardWarReport = await getWarReport(shardAPI, mapList);
+				const shardWarReport = await getWarReport(shardAPI);
 				tableObject[shardData[shardName].name] = shardWarReport;
 			}
 			catch (error) {
@@ -88,7 +67,6 @@ module.exports = {
 					'Colonials': '0',
 					'Wardens': '0',
 					'Total': '0',
-					'Day': '0',
 				};
 				console.log(error);
 			}
@@ -99,17 +77,21 @@ module.exports = {
 				const currentShard = arrayShards[i];
 				const shardAPI = shardData[currentShard].api;
 				try {
-					const mapList = await getMaps(shardAPI);
-					const shardWarReport = await getWarReport(shardAPI, mapList);
+					const shardWarReport = await getWarReport(shardAPI);
 					tableObject[shardData[currentShard].name] = shardWarReport;
 				}
 				catch (error) {
+					tableObject[shardData[shardName].name] = {
+						'Colonials': '0',
+						'Wardens': '0',
+						'Total': '0',
+					};
 					console.log(error);
 				}
 			}
 		}
 		const table = new AsciiTable();
-		table.setHeading('Shard', 'Colonials', 'Wardens', 'Total', 'Day');
+		table.setHeading('Shard', 'Colonials', 'Wardens', 'Total');
 		const tableObjectKeys = Object.keys(tableObject);
 		for (let i = 0; i < tableObjectKeys.length; i++) {
 			const currentRow = tableObject[tableObjectKeys[i]];
@@ -118,7 +100,6 @@ module.exports = {
 			rowValues.push(currentRow.Colonials);
 			rowValues.push(currentRow.Wardens);
 			rowValues.push(currentRow.Total);
-			rowValues.push(currentRow.Day);
 			table.addRow(rowValues);
 		}
 
