@@ -1,6 +1,4 @@
 node_modules
-npm-debug.log
-.eslintrc.json
+pnpm-lock.yaml
 .env
-.config.json
 .gitignore
