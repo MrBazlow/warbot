@@ -122,7 +122,7 @@ export class UserEvent extends Command {
     const tableData = [['Shard', 'Colonials', 'Wardens', 'Total', 'Day']]
     arrayShards.forEach((shard) => {
       tableData.push([
-        shard,
+        shard.toUpperCase(),
         tally[shard].Colonials,
         tally[shard].Wardens,
         tally[shard].Total,
