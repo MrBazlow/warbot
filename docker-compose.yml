@@ -1,0 +1,9 @@
+version: "3.9"
+services:
+  bot:
+    image: "mrbazlow/warbot:latest"
+    restart: always
+    volumes:
+      - ./data:/opt/app/data
+    env_file:
+      - ./.env

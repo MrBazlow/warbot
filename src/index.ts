@@ -1,18 +1,31 @@
 import * as dotenv from 'dotenv'
 import { ApplicationCommandRegistries, RegisterBehavior, SapphireClient } from '@sapphire/framework'
 import { GatewayIntentBits } from 'discord.js'
+import { TimerManager } from '@sapphire/time-utilities'
 
 dotenv.config()
 
 if (process.env.DISCORD_TOKEN === undefined) {
   console.error('No DISCORD_TOKEN assigned')
-  process.exit(1)
+  process.exitCode = 1
+  process.exit()
+}
+
+if (process.env.QRF_CHANNEL === undefined) {
+  console.error('ERROR: QRF_CHANNEL VARIABLE NOT SET. QRF MESSAGES CANNOT BE SENT')
+  process.exitCode = 1
+  process.exit()
 }
 
 ApplicationCommandRegistries.setDefaultBehaviorWhenNotIdentical(RegisterBehavior.BulkOverwrite)
 
 const client = new SapphireClient({
-  intents: [GatewayIntentBits.Guilds],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.GuildMessages
+  ],
   loadMessageCommandListeners: true
 })
 
@@ -24,8 +37,13 @@ async function main(): Promise<void> {
   } catch (error) {
     client.logger.fatal(error)
     client.destroy()
-    process.exit(1)
+    process.exitCode = 1
+    process.exit()
   }
 }
+
+process.on('SIGTERM', () => {
+  TimerManager.destroy()
+})
 
 void main()

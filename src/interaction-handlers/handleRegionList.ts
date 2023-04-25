@@ -21,7 +21,8 @@ export class AutocompleteHandler extends InteractionHandler {
   }
 
   public override parse(interaction: AutocompleteInteraction) {
-    if (interaction.commandName !== 'shardresources') {
+    const regionCommands = ['shardresources', 'qrf']
+    if (!regionCommands.includes(interaction.commandName)) {
       return this.none()
     }
 
