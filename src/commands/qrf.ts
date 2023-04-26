@@ -1,20 +1,25 @@
-import { Command } from '@sapphire/framework'
-import { createPartitionedMessageRow } from '@sapphire/discord.js-utilities'
 import {
   EmbedBuilder,
   ButtonBuilder,
   ButtonStyle,
   GuildChannel,
-  PermissionsBitField,
   ComponentType,
-  TextChannel
+  TextChannel,
+  ModalBuilder,
+  TextInputBuilder,
+  ActionRowBuilder,
+  TextInputStyle
 } from 'discord.js'
-import errorMessage from '../lib/errorMessage.js'
-import { regionFriendlyNamesSchema } from '../schema.js'
+import { createPartitionedMessageRow } from '@sapphire/discord.js-utilities'
 import { Time, TimerManager } from '@sapphire/time-utilities'
-import { Value } from '@sinclair/typebox/value'
 import informativeError from '../lib/informativeError.js'
+import { regionFriendlyNamesSchema } from '../schema.js'
+import errorMessage from '../lib/errorMessage.js'
+import { Value } from '@sinclair/typebox/value'
+import { Command } from '@sapphire/framework'
+import majorLabels from '../util/major.js'
 
+import type { Message, ModalActionRowComponentBuilder } from 'discord.js'
 export class UserCommandCreateButton extends Command {
   public regionFriendlyNames = Value.Create(regionFriendlyNamesSchema)
 
@@ -34,7 +39,14 @@ export class UserCommandCreateButton extends Command {
         .addStringOption((option) =>
           option //
             .setName('region')
-            .setDescription('Region to check')
+            .setDescription('QRF Region')
+            .setAutocomplete(true)
+            .setRequired(true)
+        )
+        .addStringOption((option) =>
+          option //
+            .setName('area')
+            .setDescription('area in region')
             .setAutocomplete(true)
             .setRequired(true)
         )
@@ -56,13 +68,22 @@ export class UserCommandCreateButton extends Command {
   public override async chatInputRun(interaction: Command.ChatInputCommandInteraction) {
     await interaction.deferReply({ ephemeral: true })
     const userAvatar = interaction.user.avatarURL() ?? ''
-    const region = interaction.options
-      .getString('region')
-      ?.trim() as keyof typeof this.regionFriendlyNames
+    const region = interaction.options.getString('region')?.trim() as
+      | keyof typeof this.regionFriendlyNames
+      | undefined
+    const area = interaction.options.getString('area')?.trim()
     const description = interaction.options.getString('description') ?? ''
     const image = interaction.options.getAttachment('screenshot')
 
     try {
+      if (region === undefined) {
+        await informativeError('The name of the region was not properly defined', interaction)
+        return
+      }
+      if (area === undefined) {
+        await informativeError('The area in the region was not properly defined', interaction)
+        return
+      }
       if (!(interaction.channel instanceof GuildChannel)) {
         await informativeError(
           'This channel is not a discord server channel, this command cannot be called here',
@@ -146,6 +167,10 @@ export class UserCommandCreateButton extends Command {
         await informativeError(`"${region}" is not a location in Foxhole`, interaction)
         return
       }
+      if (!Object.hasOwn(majorLabels[region], area)) {
+        await informativeError(`"${area}" is not a location in Foxhole`, interaction)
+        return
+      }
       if (image === null) {
         await informativeError(`Could not find the attachment image`, interaction)
         return
@@ -153,7 +178,7 @@ export class UserCommandCreateButton extends Command {
 
       const qrfEmbed = new EmbedBuilder()
         .setAuthor({ name: interaction.user.tag, iconURL: userAvatar })
-        .setTitle(`Help ${this.regionFriendlyNames[region]}!`)
+        .setTitle(`Help ${area} in ${this.regionFriendlyNames[region]}!`)
         .setDescription(description)
         .setImage(image.url)
         .setColor('#245682')
@@ -174,68 +199,123 @@ export class UserCommandCreateButton extends Command {
         .setEmoji('📩')
         .setLabel('Submit QRF Request')
         .setStyle(ButtonStyle.Success)
+      const editTextButton = new ButtonBuilder() //
+        .setCustomId('qrfEdit')
+        .setEmoji('✍️')
+        .setLabel('Edit text')
+        .setStyle(ButtonStyle.Primary)
+      const cancelButton = new ButtonBuilder() //
+        .setCustomId('qrfCancel')
+        .setEmoji('🛑')
+        .setLabel('Cancel')
+        .setStyle(ButtonStyle.Secondary)
 
       const qrfMessage = await interaction.editReply({
         embeds: [qrfEmbed],
-        components: createPartitionedMessageRow([submitButton])
+        components: createPartitionedMessageRow([submitButton, editTextButton, cancelButton])
       })
 
-      qrfMessage
-        .awaitMessageComponent({
-          filter: () => true,
-          componentType: ComponentType.Button,
-          time: Time.Minute * 2
-        })
-        .then(async (buttonClick) => {
-          const actualMessageEmbeds = buttonClick.message.embeds[0]
-
-          const qrfButton = new ButtonBuilder()
-            .setStyle(ButtonStyle.Primary)
-            .setEmoji('🏃‍♂️')
-            .setLabel(`On my way`)
-            .setCustomId('qrfRespond')
-          const qrfIgnore = new ButtonBuilder()
-            .setStyle(ButtonStyle.Secondary)
-            .setEmoji('🔇')
-            .setLabel('Not responding')
-            .setCustomId('qrfIgnore')
-          const qrfResolved = new ButtonBuilder()
-            .setStyle(ButtonStyle.Success)
-            .setEmoji('👍')
-            .setLabel('Resolved')
-            .setCustomId('qrfResolved')
-
-          const qrfMessage = await qrfChannel.send({
-            embeds: [actualMessageEmbeds],
-            components: createPartitionedMessageRow([qrfButton, qrfIgnore, qrfResolved])
+      const buttonListener = async () => {
+        await qrfMessage
+          .awaitMessageComponent({
+            componentType: ComponentType.Button,
+            time: Time.Minute * 5
           })
-          const threadName = actualMessageEmbeds.title ?? 'QRF Thread'
-          const qrfThread = await qrfMessage.startThread({ name: threadName })
-          await qrfThread.members.add(interaction.user)
-          TimerManager.setTimeout(() => {
-            if (!qrfThread.locked || qrfMessage.components.length > 0) {
-              void qrfMessage
-                .edit({ embeds: [...qrfMessage.embeds], components: [] })
-                .then(async () => {
-                  await qrfThread.setLocked(true, '24h since event')
-                  await qrfThread.send({
-                    content: 'This QRF event is now 24h, this thread is now closing'
-                  })
-                })
-                .catch((error) => {
-                  interaction.client.logger.error(error)
-                })
+          .then(async (buttonClick) => {
+            const actualMessageEmbeds = buttonClick.message.embeds[0]
+            if (buttonClick.customId === 'qrfCancel') {
+              interaction.deleteReply().catch((error: unknown) => {
+                interaction.client.logger.error(error)
+              })
+            } else if (buttonClick.customId === 'qrfSubmit') {
+              await buttonClick.deferReply()
+              const qrfButton = new ButtonBuilder()
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🏃‍♂️')
+                .setLabel(`On my way`)
+                .setCustomId('qrfRespond')
+              const qrfIgnore = new ButtonBuilder()
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('🔇')
+                .setLabel('Not responding')
+                .setCustomId('qrfIgnore')
+              const qrfResolved = new ButtonBuilder()
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('👍')
+                .setLabel('Resolved')
+                .setCustomId('qrfResolved')
+
+              const qrfMessage = await qrfChannel.send({
+                embeds: [actualMessageEmbeds],
+                components: createPartitionedMessageRow([qrfButton, qrfIgnore, qrfResolved])
+              })
+              const threadName = actualMessageEmbeds.title ?? 'QRF Thread'
+              const qrfThread = await qrfMessage.startThread({ name: threadName })
+              await qrfThread.members.add(interaction.user)
+              TimerManager.setTimeout(() => {
+                if (!qrfThread.locked || qrfMessage.components.length > 0) {
+                  void qrfMessage
+                    .edit({ embeds: [...qrfMessage.embeds], components: [] })
+                    .then(async () => {
+                      await qrfThread.setLocked(true, '24h since event')
+                      await qrfThread.send({
+                        content: 'This QRF event is now 24h, this thread is now closing'
+                      })
+                    })
+                    .catch((error) => {
+                      interaction.client.logger.error(error)
+                    })
+                }
+              }, Time.Hour * 24)
+              await interaction.deleteReply()
+              await buttonClick.deleteReply()
+            } else if (buttonClick.customId === 'qrfEdit') {
+              const editModal = new ModalBuilder() //
+                .setCustomId('qrfEditModal')
+                .setTitle('Edit QRF')
+
+              const titleEdit = new TextInputBuilder() //
+                .setMaxLength(256)
+                .setLabel('Title')
+                .setValue(actualMessageEmbeds.title ?? '')
+                .setStyle(TextInputStyle.Short)
+                .setCustomId('qrfTitleEdit')
+              const actionRowTitle = new ActionRowBuilder<ModalActionRowComponentBuilder>() //
+                .addComponents(titleEdit)
+
+              const descriptionEdit = new TextInputBuilder() //
+                .setMaxLength(4000)
+                .setLabel('Description')
+                .setValue(actualMessageEmbeds.description ?? '')
+                .setStyle(TextInputStyle.Paragraph)
+                .setCustomId('qrfDescriptionEdit')
+              const actionRowDescription = new ActionRowBuilder<ModalActionRowComponentBuilder>() //
+                .addComponents(descriptionEdit)
+
+              editModal.addComponents(actionRowTitle, actionRowDescription)
+              await buttonClick.showModal(editModal)
+              const submittedModal = await buttonClick.awaitModalSubmit({ time: Time.Minute * 5 })
+              await submittedModal.deferReply({ ephemeral: true })
+              const newEmbed = new EmbedBuilder(qrfEmbed.toJSON())
+                .setTitle(submittedModal.fields.getTextInputValue('qrfTitleEdit'))
+                .setDescription(submittedModal.fields.getTextInputValue('qrfDescriptionEdit'))
+              await interaction.editReply({
+                embeds: [newEmbed],
+                components: createPartitionedMessageRow([
+                  submitButton,
+                  editTextButton,
+                  cancelButton
+                ])
+              })
+              await submittedModal.deleteReply()
+              await buttonListener()
             }
-          }, Time.Hour * 24)
-        })
-        .catch((error) => {
-          interaction.client.logger.error(error)
-        })
-        .finally(() => {
-          interaction.deleteReply().catch((error: unknown) => {
+          })
+          .catch((error) => {
             interaction.client.logger.error(error)
           })
-        })
+      }
+      await buttonListener()
     } catch (error) {
       void errorMessage(error, interaction)
     }
