@@ -172,7 +172,7 @@ export class UserCommandCreateButton extends Command {
       const submitButton = new ButtonBuilder() //
         .setCustomId('qrfSubmit')
         .setEmoji('📩')
-        .setLabel('Submit')
+        .setLabel('Submit QRF Request')
         .setStyle(ButtonStyle.Success)
 
       const qrfMessage = await interaction.editReply({
